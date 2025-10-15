@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     char message[BUFFER_SIZE];
 
     printf("\033[2J\033[H");
-    printf("Enter the port to connect to (default %d): ", port);
+    printf("Enter the port to connect to: ");
     char port_input[10];
     scanf("%9s", port_input);
 
@@ -52,11 +52,16 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    send(sock, name, strlen(name), 0);
+    printf("\033[2J\033[H");
+
     printf("> ");
     fflush(stdout);
+    int connected = 1;
 
-    while (1)
+    while (connected)
     {
+        memset(buffer, 0, BUFFER_SIZE);
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(STDIN_FILENO, &readfds);
@@ -79,7 +84,8 @@ int main(int argc, char *argv[])
 
             if (strcmp(message, "exit") == 0)
             {
-                break;
+                connected = 0;
+                printf("\033[2J\033[H");
             }
 
             send(sock, message, strlen(message), 0);
@@ -89,12 +95,34 @@ int main(int argc, char *argv[])
 
         if (FD_ISSET(sock, &readfds))
         {
-            int valread = read(sock, buffer, BUFFER_SIZE);
+            int valread = read(sock, buffer, BUFFER_SIZE - 1);
             if (valread > 0)
             {
                 buffer[valread] = '\0';
                 printf("\r\033[K");
-                printf("%s\n", buffer);
+
+                char buffer_copy[BUFFER_SIZE];
+                memset(buffer_copy, 0, BUFFER_SIZE);
+                strncpy(buffer_copy, buffer, BUFFER_SIZE - 1);
+                buffer_copy[BUFFER_SIZE - 1] = '\0';
+
+                char *user = strtok(buffer_copy, ":");
+                char *msg = strtok(NULL, "");
+
+                if (user && msg)
+                {
+                    if (strcmp(user, name) != 0)
+                    {
+                        printf("%s: %s\n", user, msg);
+                    }
+                }
+                else
+                {
+                    printf("Invalid message format received: %s\n", buffer);
+                }
+
+                memset(buffer, 0, BUFFER_SIZE);
+
                 printf("> ");
                 fflush(stdout);
             }

@@ -10,6 +10,7 @@
 #define BUFFER_SIZE 1024
 
 int port = 8080;
+char client_names[MAX_CLIENTS][20];
 
 int main(int argc, char *argv[])
 {
@@ -88,12 +89,25 @@ int main(int argc, char *argv[])
                 exit(EXIT_FAILURE);
             }
 
+            char username[21];
+            memset(username, 0, sizeof(username));
+            int bytes_read = read(new_socket, username, sizeof(username) - 1);
+            if (bytes_read > 0)
+            {
+                username[bytes_read] = '\0';
+                username[strcspn(username, "\n")] = 0;
+            }
+
             for (i = 0; i < MAX_CLIENTS; i++)
             {
                 if (client_socket[i] == 0)
                 {
                     client_socket[i] = new_socket;
-                    printf("New connection: socket fd is %d, ip is : %s, port : %d\n", new_socket, inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+                    memset(client_names[i], 0, sizeof(client_names[i]));
+                    strncpy(client_names[i], username, sizeof(client_names[i]) - 1);
+                    client_names[i][sizeof(client_names[i]) - 1] = '\0';
+                    printf("New connection: socket fd is %d, ip is : %s, port : %d, username: %s\n",
+                           new_socket, inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port), client_names[i]);
                     break;
                 }
             }
@@ -105,35 +119,33 @@ int main(int argc, char *argv[])
             if (FD_ISSET(sd, &readfds))
             {
                 int valread;
+                getpeername(sd, (struct sockaddr *)&client_addr, (socklen_t *)&addrlen);
                 if ((valread = read(sd, buffer, BUFFER_SIZE)) == 0)
                 {
-                    getpeername(sd, (struct sockaddr *)&client_addr, (socklen_t *)&addrlen);
                     printf("Host disconnected: ip %s, port %d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
                     close(sd);
                     client_socket[i] = 0;
+                    memset(client_names[i], 0, sizeof(client_names[i]));
                 }
                 else
                 {
                     buffer[valread] = '\0';
-                    printf("Received message: %s\n", buffer);
+                    printf("%s, on port %d sent: %s\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port), buffer);
 
-                    // Create formatted message with sender info
                     char formatted_message[BUFFER_SIZE + 50];
-                    snprintf(formatted_message, sizeof(formatted_message), "Client[%d]: %s", sd, buffer);
-
-                    // Echo back to sender (so they see their own message)
+                    snprintf(formatted_message, sizeof(formatted_message), "%s: %s", client_names[i], buffer);
                     send(sd, formatted_message, strlen(formatted_message), 0);
 
-                    // Broadcast to all other clients
                     for (j = 0; j < MAX_CLIENTS; j++)
                     {
                         if (client_socket[j] != 0 && client_socket[j] != sd)
                         {
+                            char formatted_message[BUFFER_SIZE];
+                            snprintf(formatted_message, sizeof(formatted_message), "%s: %.1000s", client_names[i], buffer);
                             send(client_socket[j], formatted_message, strlen(formatted_message), 0);
                         }
                     }
 
-                    // Clear buffer for next message
                     memset(buffer, 0, BUFFER_SIZE);
                 }
             }
